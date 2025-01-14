@@ -22,7 +22,7 @@ This repository contains a Bash script (`install_web_stack.sh`) that automates t
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/yourusername/nginx-lemp-stack-installer.git
+   git clone https://github.com/felipeczpaz/nginx-lemp-stack-installer.git
    cd nginx-lemp-stack-installer
    ```
 
