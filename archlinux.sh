@@ -1,28 +1,47 @@
 #!/bin/bash
 set -e
 
-# Define your MySQL root password (CHANGE THIS)
 MYSQL_ROOT_PASSWORD="mysql_root_password"
-
-# Define your domain (CHANGE THIS)
 YOUR_DOMAIN="your_domain.com"
 
-# Update package database and upgrade
 sudo pacman -Syu --noconfirm
+sudo pacman -S --noconfirm nginx mariadb php php-fpm
 
-# Install Nginx, MySQL, PHP-FPM, and PHP MySQL extension
-# (On Arch, the MySQL package is usually community "mariadb" unless you specifically want MySQL.)
-# We'll use MariaDB for compatibility.
-sudo pacman -S --noconfirm nginx mariadb php php-fpm #php-mysql
+# Create MariaDB/MySQL directories (data/log/socket runtime)
+sudo mkdir -p /var/lib/mysql
+sudo mkdir -p /var/log/mysql
+sudo mkdir -p /run/mysqld
 
-# Enable and start services
+# Set ownership
+sudo chown -R mysql:mysql /var/lib/mysql /var/log/mysql /run/mysqld
+
+# Set permissions
+sudo chmod 700 /var/lib/mysql
+sudo chmod 755 /var/log/mysql
+sudo chmod 755 /run/mysqld
+
+sudo mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
+
 sudo systemctl enable --now nginx
 sudo systemctl enable --now mariadb
 
-# Secure MariaDB installation (mysql_secure_installation equivalent)
-# On Arch, the command typically exists with the server package.
-# If it isn't present for some reason, the script will fail here.
-sudo mysql_secure_installation <<EOF
+# --- MariaDB secure install (mysql_secure_installation equivalent) ---
+SECURE_BIN="$(command -v mysql_secure_installation || true)"
+if [ -z "$SECURE_BIN" ]; then
+  echo "Error: mysql_secure_installation not found. Install/ensure MariaDB server utilities are present." >&2
+  exit 1
+fi
+
+# Some MariaDB builds require the "current password" to be blank on fresh installs.
+# This heredoc answers:
+# - Set root password? y
+# - New password
+# - Re-enter new password
+# - Remove anonymous users? y
+# - Disallow root login remotely? y
+# - Remove test database and access to it? y
+# - Reload privilege tables? y
+"$SECURE_BIN" <<EOF
 
 y
 $MYSQL_ROOT_PASSWORD
@@ -32,20 +51,13 @@ y
 y
 y
 EOF
+# -----------------------------------------------------------------------
 
-# Create directory for your domain
 sudo mkdir -p "/var/www/$YOUR_DOMAIN"
-
-# Set ownership of the directory to current user
 sudo chown -R "$USER:$USER" "/var/www/$YOUR_DOMAIN"
 
-# Determine PHP major.minor (e.g., 8.2)
 PHP_VERSION="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')"
 
-# Determine PHP-FPM socket path on Arch.
-# Default socket commonly:
-# /run/php/php-fpm.sock or /run/php/php${VERSION}-fpm.sock depending on packaging/config.
-# We'll check a few likely locations.
 SOCK_CANDIDATES=(
   "/run/php/php${PHP_VERSION}-fpm.sock"
   "/var/run/php/php${PHP_VERSION}-fpm.sock"
@@ -61,17 +73,12 @@ for s in "${SOCK_CANDIDATES[@]}"; do
   fi
 done
 
-# Start PHP-FPM and re-check if socket not found yet
 sudo systemctl enable --now php-fpm 2>/dev/null || true
 
 if [ -z "$FASTCGI_PASS" ]; then
-  # As a fallback, use the common Arch default name.
   FASTCGI_PASS="unix:/run/php/php-fpm.sock"
 fi
 
-# Create Nginx config
-# Arch nginx uses /etc/nginx/nginx.conf and often includes conf.d/*.conf.
-# We'll keep it simple: create a dedicated file in conf.d.
 sudo bash -c "cat > /etc/nginx/conf.d/$YOUR_DOMAIN.conf" <<EOF
 server {
     listen 80;
@@ -97,7 +104,6 @@ server {
 }
 EOF
 
-# Validate and restart
 sudo nginx -t
 sudo systemctl restart nginx
 sudo systemctl restart php-fpm 2>/dev/null || true
