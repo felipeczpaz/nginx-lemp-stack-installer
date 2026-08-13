@@ -13,7 +13,7 @@ sudo pacman -Syu --noconfirm
 # Install Nginx, MySQL, PHP-FPM, and PHP MySQL extension
 # (On Arch, the MySQL package is usually community "mariadb" unless you specifically want MySQL.)
 # We'll use MariaDB for compatibility.
-sudo pacman -S --noconfirm nginx mariadb php php-fpm php-mysql
+sudo pacman -S --noconfirm nginx mariadb php php-fpm #php-mysql
 
 # Enable and start services
 sudo systemctl enable --now nginx
