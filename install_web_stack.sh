@@ -4,7 +4,7 @@
 MYSQL_ROOT_PASSWORD="mysql_root_password"
 
 # Define your domain
-YOUR_DOMAIN="your_domain.com"
+YOUR_DOMAIN="flowhooks.digital"
 
 # Update package lists
 sudo apt update
