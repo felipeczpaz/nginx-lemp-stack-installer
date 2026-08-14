@@ -1,11 +1,15 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 MYSQL_ROOT_PASSWORD="mysql_root_password"
 YOUR_DOMAIN="your_domain.com"
 
 sudo pacman -Syu --noconfirm
 sudo pacman -S --noconfirm nginx mariadb php php-fpm
+
+sudo rm -rf /var/lib/mysql
+sudo rm -rf /var/log/mysql
+sudo rm -rf /run/mysqld
 
 # Create MariaDB/MySQL directories (data/log/socket runtime)
 sudo mkdir -p /var/lib/mysql
@@ -22,8 +26,18 @@ sudo chmod 755 /run/mysqld
 
 sudo mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
 
-sudo systemctl enable --now nginx
+
+sudo nginx -t
+
 sudo systemctl enable --now mariadb
+sudo systemctl enable --now mysql
+sudo systemctl enable --now mysqld
+sudo systemctl enable --now nginx
+
+sudo systemctl restart mariadb
+sudo systemctl restart mysql
+sudo systemctl restart mysqld
+sudo systemctl restart nginx
 
 # --- MariaDB secure install (mysql_secure_installation equivalent) ---
 SECURE_BIN="$(command -v mysql_secure_installation || true)"
@@ -41,7 +55,9 @@ fi
 # - Disallow root login remotely? y
 # - Remove test database and access to it? y
 # - Reload privilege tables? y
-"$SECURE_BIN" <<EOF
+
+# Secure MySQL installation
+sudo mysql_secure_installation <<EOF
 
 y
 $MYSQL_ROOT_PASSWORD
@@ -51,7 +67,6 @@ y
 y
 y
 EOF
-# -----------------------------------------------------------------------
 
 sudo mkdir -p "/var/www/$YOUR_DOMAIN"
 sudo chown -R "$USER:$USER" "/var/www/$YOUR_DOMAIN"
@@ -79,6 +94,35 @@ if [ -z "$FASTCGI_PASS" ]; then
   FASTCGI_PASS="unix:/run/php/php-fpm.sock"
 fi
 
+
+CONF="/etc/nginx/nginx.conf"
+LINE="include /etc/nginx/conf.d/*.conf;"
+
+# Ensure nginx.conf exists
+[[ -f "$CONF" ]] || { echo "Missing $CONF"; exit 1; }
+
+# Backup
+cp -a "$CONF" "${CONF}.bak.$(date +%F_%H%M%S)"
+
+# If line doesn't exist, add it (after the first "http {" block start if possible, else append)
+if ! grep -Fxq "$LINE" "$CONF"; then
+  if grep -qE '^[[:space:]]*http[[:space:]]*\{' "$CONF"; then
+    # insert after the first http { line
+    awk -v line="$LINE" '
+      { print }
+      $0 ~ /^[[:space:]]*http[[:space:]]*\{/ && !done {
+        print line
+        done=1
+      }
+    ' "$CONF" > "${CONF}.tmp"
+    mv "${CONF}.tmp" "$CONF"
+  else
+    echo "$LINE" >> "$CONF"
+  fi
+fi
+
+
+sudo mkdir -p /etc/nginx/conf.d
 sudo bash -c "cat > /etc/nginx/conf.d/$YOUR_DOMAIN.conf" <<EOF
 server {
     listen 80;
