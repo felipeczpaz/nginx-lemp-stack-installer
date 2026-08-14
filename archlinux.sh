@@ -94,32 +94,20 @@ if [ -z "$FASTCGI_PASS" ]; then
   FASTCGI_PASS="unix:/run/php/php-fpm.sock"
 fi
 
-
 CONF="/etc/nginx/nginx.conf"
 LINE="include /etc/nginx/conf.d/*.conf;"
 
-# Ensure nginx.conf exists
-[[ -f "$CONF" ]] || { echo "Missing $CONF"; exit 1; }
+[ -f "$CONF" ] || { echo "Missing $CONF"; exit 1; }
 
-# Backup
 cp -a "$CONF" "${CONF}.bak.$(date +%F_%H%M%S)"
 
-# If line doesn't exist, add it (after the first "http {" block start if possible, else append)
-if ! grep -Fxq "$LINE" "$CONF"; then
-  if grep -qE '^[[:space:]]*http[[:space:]]*\{' "$CONF"; then
-    # insert after the first http { line
-    awk -v line="$LINE" '
-      { print }
-      $0 ~ /^[[:space:]]*http[[:space:]]*\{/ && !done {
-        print line
-        done=1
-      }
-    ' "$CONF" > "${CONF}.tmp"
-    mv "${CONF}.tmp" "$CONF"
-  else
-    echo "$LINE" >> "$CONF"
-  fi
-fi
+awk -v line="$LINE" '
+  { print; 
+    if (!done && $0 ~ /^[[:space:]]*http[[:space:]]*\{/){ print line; done=1 }
+  }
+  END { if (!done) print line }
+' "$CONF" > "${CONF}.tmp" && mv "${CONF}.tmp" "$CONF"
+
 
 
 sudo mkdir -p /etc/nginx/conf.d
